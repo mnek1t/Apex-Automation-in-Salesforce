@@ -183,7 +183,7 @@ public with sharing class ContactTriggerHandlerTest {
     
     @isTest 
     public static void afterUpdateBulkTest() {
-        List<Account> testAccounts = [SELECT Id FROM Account];
+        List<Account> testAccounts = [SELECT Id, Name FROM Account];
         List<Case> testCases = new List<Case>();
         List<Contact> testContacts = new List<Contact>();
         String usAccountId;
