@@ -2,74 +2,41 @@ public with sharing class ContactTriggerHandler {
     private static final Integer LEGAL_US_AGE = 21;
     private static final Integer LEGAL_EUROPE_AGE = 18;
     public static void beforeInsert(List<Contact> newContacts) {
-        Map<Id, List<Contact>> accountToContactsMap = new Map<Id, List<Contact>>();
-        for (Contact newCon : newContacts) {
-            if(newCon.AccountId == null || newCon.Birthdate == null) {
-                continue;
-            }
-            if(!accountToContactsMap.containsKey(newCon.AccountId)) {
-                accountToContactsMap.put(newCon.AccountId, new List<Contact>());
-            }
-            accountToContactsMap.get(newCon.AccountId).add(newCon);
-        }
+        Map<Id, List<Contact>> accountToContactsMap = populateAccountToContactsMap(newContacts, null);
 
         verifyContactAge(accountToContactsMap);
     }
     public static void beforeUpdate(List<Contact> newContacts, Map<Id, Contact> oldMapContacts) {
-        Map<Id, List<Contact>> accountToContactsMap = new Map<Id, List<Contact>>();
-        for (Contact newCon : newContacts) {
-            if(newCon.AccountId == null || newCon.Birthdate == null || 
-                oldMapContacts.get(newCon.Id) == null || 
-                newCon.Birthdate == oldMapContacts.get(newCon.Id).Birthdate) {
-                    continue;
-            }
-            if(!accountToContactsMap.containsKey(newCon.AccountId)) {
-                accountToContactsMap.put(newCon.AccountId, new List<Contact>());
-            }
-            accountToContactsMap.get(newCon.AccountId).add(newCon);
-        }
-
+        Map<Id, List<Contact>> accountToContactsMap = populateAccountToContactsMap(newContacts, oldMapContacts);
         verifyContactAge(accountToContactsMap);
     }
 
     public static void afterInsert(List<Contact> newContacts) {
-        Set<Id> accountIds = new Set<Id>();
-        Map<Id, Contact> primaryContacts = new Map<Id, Contact>();
-        for (Contact newCon : newContacts) {
-            if(newCon.AccountId == null || newCon.Level__c != 'Primary') {
-                continue;
-            }
-            if(!accountIds.contains(newCon.AccountId)) {
-                accountIds.add(newCon.AccountId);
-                primaryContacts.put(newCon.AccountId, newCon);
-            }
-        }
-        populateCaseContactId(accountIds, primaryContacts);
+        Map<Id, Contact> primaryContacts = getPrimaryContacts(newContacts);
+        populateCaseContactId(primaryContacts.keySet(), primaryContacts);
     }
 
     public static void afterUpdate(List<Contact> newContacts, Map<Id, Contact> oldMapContacts) {
-        Set<Id> newAccountIds = new Set<Id>();
-        Set<Id> oldAccountIds = new Set<Id>();
-        Set<Id> contactIdsWithChangedAccount = new Set<Id>();
-        Map<Id, Contact> contactsNewAccount = new Map<Id, Contact>();
-
-        for (Contact newContact : newContacts) {
-            Contact oldContact = oldMapContacts.get(newContact.Id);
-            if(newContact.AccountId == oldContact.AccountId) {
-                continue;
-            }
-
-            newAccountIds.add(newContact.AccountId);
-            contactIdsWithChangedAccount.add(newContact.Id);
-            contactsNewAccount.put(newContact.AccountId, newContact);
-            oldAccountIds.add(oldContact.AccountId);
-        }
-
-        
-        unpopulateCaseContactId(oldAccountIds, contactIdsWithChangedAccount);
-        populateCaseContactId(newAccountIds, contactsNewAccount);
+        Map<Id, Contact> contactsNewAccount = getContactsNewAccount(newContacts, oldMapContacts);
+        unpopulateCaseContactId(contactsNewAccount.values());
+        populateCaseContactId(contactsNewAccount.keySet(), contactsNewAccount);
     }
 
+    private static Map<Id, List<Contact>> populateAccountToContactsMap(List<Contact> contacts, Map<Id, Contact> oldMapContacts) {
+            Map<Id, List<Contact>> accountToContactsMap = new Map<Id, List<Contact>>();
+            for (Contact newCon : contacts) {
+                if(newCon.AccountId == null || newCon.Birthdate == null || 
+                    (oldMapContacts != null && (oldMapContacts.get(newCon.Id) == null || 
+                    newCon.Birthdate == oldMapContacts.get(newCon.Id).Birthdate))) {
+                        continue;
+                }
+                if(!accountToContactsMap.containsKey(newCon.AccountId)) {
+                    accountToContactsMap.put(newCon.AccountId, new List<Contact>());
+                }
+                accountToContactsMap.get(newCon.AccountId).add(newCon);
+            }
+            return accountToContactsMap;
+        }
     private static void verifyContactAge(Map<Id, List<Contact>> accountToContactsMap) {
         List<Account> accounts = [SELECT Id, BillingCountry FROM Account WHERE Id IN :accountToContactsMap.keySet()];
         for (Account acc : accounts) {
@@ -81,6 +48,31 @@ public with sharing class ContactTriggerHandler {
                 }
             }
         }
+    }
+
+    private static Map<Id, Contact> getPrimaryContacts(List<Contact> contacts) {
+        Map<Id, Contact> primaryContacts = new Map<Id, Contact>();
+        for (Contact newCon : contacts) {
+            if(newCon.AccountId == null || newCon.Level__c != 'Primary') {
+                continue;
+            }
+            if(!primaryContacts.containsKey(newCon.AccountId)) {
+                primaryContacts.put(newCon.AccountId, newCon);
+            }
+        }
+        return primaryContacts;
+    }
+
+    private static Map<Id, Contact> getContactsNewAccount(List<Contact> newContacts, Map<Id, Contact> oldMapContacts) {
+        Map<Id, Contact> contactsNewAccount = new Map<Id, Contact>();
+        for (Contact newContact : newContacts) {
+            Contact oldContact = oldMapContacts.get(newContact.Id);
+            if(newContact.AccountId == oldContact.AccountId) {
+                continue;
+            }
+            contactsNewAccount.put(newContact.AccountId, newContact);
+        }
+        return contactsNewAccount;
     }
 
     private static void populateCaseContactId(Set<Id> newAccountIds, Map<Id, Contact> contactsNewAccount) {
@@ -96,12 +88,16 @@ public with sharing class ContactTriggerHandler {
         }  
     }
 
-    private static void unpopulateCaseContactId(Set<Id> oldAccountIds, Set<Id> contactIdsWithChangedAccount) {
+    private static void unpopulateCaseContactId(List<Contact> contacts) {
+        Set<Id> contactIds = new Set<Id>();
+        for (Contact c : contacts) {
+            contactIds.add(c.Id);
+        }
         List<Case> contactCases = [SELECT Id, ContactId, AccountId 
                                     FROM Case 
-                                    WHERE AccountId IN :oldAccountIds AND ContactId IN :contactIdsWithChangedAccount];
+                                    WHERE ContactId IN :contactIds];
         for (Case c : contactCases) {
-        c.ContactId = null;
+            c.ContactId = null;
         }
         update contactCases;
     }
