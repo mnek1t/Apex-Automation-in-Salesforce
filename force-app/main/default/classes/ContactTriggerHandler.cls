@@ -1,6 +1,7 @@
-public with sharing class ContactTriggerHandler {
+public with sharing class ContactTriggerHandler { 
+    private static final Integer LEGAL_US_AGE = 21;
+    private static final Integer LEGAL_EUROPE_AGE = 18;
     public static void beforeInsert(List<Contact> newContacts) {
-        Set<Id> accountIds = new Set<Id>();
         Map<Id, List<Contact>> accountToContactsMap = new Map<Id, List<Contact>>();
         for (Contact newCon : newContacts) {
             if(newCon.AccountId == null || newCon.Birthdate == null) {
@@ -14,7 +15,32 @@ public with sharing class ContactTriggerHandler {
 
         List<Account> accounts = [SELECT Id, BillingCountry FROM Account WHERE Id IN :accountToContactsMap.keySet()];
         for (Account acc : accounts) {
-            Integer legalAge = (acc.BillingCountry == 'US' || acc.BillingCountry == 'USA') ? 21 : 18;
+            Integer legalAge = (acc.BillingCountry == 'US' || acc.BillingCountry == 'USA') ? LEGAL_US_AGE : LEGAL_EUROPE_AGE;
+            for (Contact con : accountToContactsMap.get(acc.Id)) {
+                Integer contactAge = Date.today().year() - con.Birthdate.year();
+                if (contactAge < legalAge) {
+                    con.addError('All contact persons should be of legal age.');
+                }
+            }
+        }
+    }
+    public static void beforeUpdate(List<Contact> newContacts, Map<Id, Contact> oldMapContacts) {
+        Map<Id, List<Contact>> accountToContactsMap = new Map<Id, List<Contact>>();
+        for (Contact newCon : newContacts) {
+            if(newCon.AccountId == null || newCon.Birthdate == null || 
+                oldMapContacts.get(newCon.Id) == null || 
+                newCon.Birthdate == oldMapContacts.get(newCon.Id).Birthdate) {
+                    continue;
+            }
+            if(!accountToContactsMap.containsKey(newCon.AccountId)) {
+                accountToContactsMap.put(newCon.AccountId, new List<Contact>());
+            }
+            accountToContactsMap.get(newCon.AccountId).add(newCon);
+        }
+
+        List<Account> accounts = [SELECT Id, BillingCountry FROM Account WHERE Id IN :accountToContactsMap.keySet()];
+        for (Account acc : accounts) {
+            Integer legalAge = (acc.BillingCountry == 'US' || acc.BillingCountry == 'USA') ? LEGAL_US_AGE : LEGAL_EUROPE_AGE;
             for (Contact con : accountToContactsMap.get(acc.Id)) {
                 Integer contactAge = Date.today().year() - con.Birthdate.year();
                 if (contactAge < legalAge) {

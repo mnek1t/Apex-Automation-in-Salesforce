@@ -33,6 +33,7 @@ public with sharing class ContactTriggerHandlerTest {
             AccountId = testAccount.Id
         );
         Database.SaveResult resultUS = Database.insert(prohibitedContact, false);
+        System.assertEquals(1, resultUS.errors.size());
         for (Database.Error error : resultUS.getErrors()) {
             System.assertEquals(StatusCode.FIELD_CUSTOM_VALIDATION_EXCEPTION, error.getStatusCode());
         }
@@ -80,6 +81,62 @@ public with sharing class ContactTriggerHandlerTest {
         System.assertEquals(203, receivedContacts.size(), 'Proper accounts should be inserted for LV Account');
     }
 
+    @isTest
+    public static void beforeUpdateTest() {
+        Account testAccount = [SELECT Id FROM Account WHERE Name = 'Test US Account'];
+        Contact testContact1 = [SELECT Id FROM Contact WHERE Name = 'Test Contact 2'];
+        Date today = Date.today();
+        testContact1.Birthdate = Date.newInstance(today.year() - 18, today.month(), today.day());
+
+        Database.SaveResult resultUS = Database.update(testContact1, false);
+        System.assertEquals(1, resultUS.errors.size());
+
+        for (Database.Error error : resultUS.getErrors()) {
+            System.assertEquals(StatusCode.FIELD_CUSTOM_VALIDATION_EXCEPTION, error.getStatusCode());
+        }
+
+        testContact1 = [SELECT Id FROM Contact WHERE Name = 'Test Contact 2'];
+        testContact1.Department = 'Web development';
+        
+        resultUS = Database.update(testContact1, false);
+        System.assertEquals(true, resultUS.success);
+    }
+
+    @isTest
+    public static void beforeUpdateBulkTest() {
+        Date today = Date.today();
+        Account testAccount = [SELECT Id FROM Account WHERE Name = 'Test US Account'];
+        List<Contact> testContacts = new List<Contact>();
+        for (Integer i = 0; i < 1000; i++) {
+            testContacts.add(new Contact(
+                LastName = 'Test Contact' + i, 
+                Birthdate = Date.newInstance(2000, 10, 28), 
+                AccountId = testAccount.Id
+            ));
+        }
+        insert testContacts;
+       
+        testContacts = [SELECT Id, Birthdate, Department FROM Contact WHERE AccountId = :testAccount.Id];
+        for (Contact testContact : testContacts) {
+            testContact.Birthdate = Date.newInstance(today.year() - 18, today.month(), today.day());
+        }
+        
+        List<Database.SaveResult> resultUS = Database.update(testContacts, false); 
+        for (Database.SaveResult sr : resultUS) {
+            for (Database.Error error : sr.getErrors()) {
+                System.assertEquals(StatusCode.FIELD_CUSTOM_VALIDATION_EXCEPTION, error.getStatusCode());
+            }
+        }
+        testContacts = [SELECT Id, Birthdate, Department FROM Contact WHERE AccountId = :testAccount.Id];
+        for (Contact testContact : testContacts) {
+            testContact.Department = 'Web development';
+        }
+        resultUS = Database.update(testContacts, false);
+        for (Database.SaveResult sr : resultUS) {
+            System.assertEquals(true, sr.success);
+        }
+    }
+    
     @isTest 
     public static void afterInsertTest() {
         Account testAccount = [SELECT Id FROM Account WHERE Name = 'Test LV Account'];
