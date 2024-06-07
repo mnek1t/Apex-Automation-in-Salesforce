@@ -13,16 +13,7 @@ public with sharing class ContactTriggerHandler {
             accountToContactsMap.get(newCon.AccountId).add(newCon);
         }
 
-        List<Account> accounts = [SELECT Id, BillingCountry FROM Account WHERE Id IN :accountToContactsMap.keySet()];
-        for (Account acc : accounts) {
-            Integer legalAge = (acc.BillingCountry == 'US' || acc.BillingCountry == 'USA') ? LEGAL_US_AGE : LEGAL_EUROPE_AGE;
-            for (Contact con : accountToContactsMap.get(acc.Id)) {
-                Integer contactAge = Date.today().year() - con.Birthdate.year();
-                if (contactAge < legalAge) {
-                    con.addError('All contact persons should be of legal age.');
-                }
-            }
-        }
+        verifyContactAge(accountToContactsMap);
     }
     public static void beforeUpdate(List<Contact> newContacts, Map<Id, Contact> oldMapContacts) {
         Map<Id, List<Contact>> accountToContactsMap = new Map<Id, List<Contact>>();
@@ -38,16 +29,7 @@ public with sharing class ContactTriggerHandler {
             accountToContactsMap.get(newCon.AccountId).add(newCon);
         }
 
-        List<Account> accounts = [SELECT Id, BillingCountry FROM Account WHERE Id IN :accountToContactsMap.keySet()];
-        for (Account acc : accounts) {
-            Integer legalAge = (acc.BillingCountry == 'US' || acc.BillingCountry == 'USA') ? LEGAL_US_AGE : LEGAL_EUROPE_AGE;
-            for (Contact con : accountToContactsMap.get(acc.Id)) {
-                Integer contactAge = Date.today().year() - con.Birthdate.year();
-                if (contactAge < legalAge) {
-                    con.addError('All contact persons should be of legal age.');
-                }
-            }
-        }
+        verifyContactAge(accountToContactsMap);
     }
 
     public static void afterInsert(List<Contact> newContacts) {
@@ -62,17 +44,7 @@ public with sharing class ContactTriggerHandler {
                 primaryContacts.put(newCon.AccountId, newCon);
             }
         }
-
-        List<Case> casesToUpdate = [SELECT Id, ContactId, AccountId 
-                                    FROM Case 
-                                    WHERE AccountId IN :accountIds AND ContactId = null];
-        for (Case c : casesToUpdate) {
-            c.ContactId = primaryContacts.get(c.AccountId).Id;
-        }
-
-        if(casesToUpdate.size() > 0) {
-            update casesToUpdate;
-        }  
+        populateCaseContactId(accountIds, primaryContacts);
     }
 
     public static void afterUpdate(List<Contact> newContacts, Map<Id, Contact> oldMapContacts) {
@@ -93,22 +65,44 @@ public with sharing class ContactTriggerHandler {
             oldAccountIds.add(oldContact.AccountId);
         }
 
-        List<Case> contactCases = [SELECT Id, ContactId, AccountId 
-                                    FROM Case 
-                                    WHERE AccountId IN :oldAccountIds AND ContactId IN :contactIdsWithChangedAccount];
-        for (Case c : contactCases) {
-            c.ContactId = null;
+        
+        unpopulateCaseContactId(oldAccountIds, contactIdsWithChangedAccount);
+        populateCaseContactId(newAccountIds, contactsNewAccount);
+    }
+
+    private static void verifyContactAge(Map<Id, List<Contact>> accountToContactsMap) {
+        List<Account> accounts = [SELECT Id, BillingCountry FROM Account WHERE Id IN :accountToContactsMap.keySet()];
+        for (Account acc : accounts) {
+            Integer legalAge = (acc.BillingCountry == 'US' || acc.BillingCountry == 'USA') ? LEGAL_US_AGE : LEGAL_EUROPE_AGE;
+            for (Contact con : accountToContactsMap.get(acc.Id)) {
+                Integer contactAge = Date.today().year() - con.Birthdate.year();
+                if (contactAge < legalAge) {
+                    con.addError('All contact persons should be of legal age.');
+                }
+            }
         }
-        update contactCases;
-    
+    }
+
+    private static void populateCaseContactId(Set<Id> newAccountIds, Map<Id, Contact> contactsNewAccount) {
         List<Case> casesToUpdate = [SELECT Id, ContactId, AccountId 
                                     FROM Case 
                                     WHERE AccountId IN :newAccountIds AND ContactId = null];
         for (Case c : casesToUpdate) {
             c.ContactId = contactsNewAccount.get(c.AccountId).Id;
         }
+
         if(casesToUpdate.size() > 0) {
             update casesToUpdate;
         }  
+    }
+
+    private static void unpopulateCaseContactId(Set<Id> oldAccountIds, Set<Id> contactIdsWithChangedAccount) {
+        List<Case> contactCases = [SELECT Id, ContactId, AccountId 
+                                    FROM Case 
+                                    WHERE AccountId IN :oldAccountIds AND ContactId IN :contactIdsWithChangedAccount];
+        for (Case c : contactCases) {
+        c.ContactId = null;
+        }
+        update contactCases;
     }
 }
