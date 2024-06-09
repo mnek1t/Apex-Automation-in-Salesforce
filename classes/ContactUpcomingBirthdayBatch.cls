@@ -7,7 +7,6 @@ public with sharing class ContactUpcomingBirthdayBatch implements Database.Batch
 
     public static void execute(Database.BatchableContext context, List<Contact> scope) {
         List<Task> tasks = new List<Task>();
-        //Date today = Date.today();
         Date upcomingTwoDays = today.addDays(2);
         for (Contact c : scope) {
             if(c.Birthdate == null) {
@@ -48,12 +47,12 @@ public with sharing class ContactUpcomingBirthdayBatch implements Database.Batch
         Boolean hasAddrress = String.isNotBlank(String.valueOf(c.MailingAddress));
         if (hasAddrress) {
             t.Description = 'The Mailing Address of the Contact is: ' 
-                + c.MailingAddress.getStreet() + ', '
-                + c.MailingAddress.getCity() + ' '
-                + c.MailingAddress.getPostalCode() + ', ' 
-                + c.MailingAddress.getState() + ' ' 
-                + c.MailingAddress.getStateCode() + ', '
-                + c.MailingAddress.getCountry() + '. ';
+                            + (c.MailingAddress.getStreet() != null ? c.MailingAddress.getStreet() : '') + ', '
+                            + (c.MailingAddress.getCity() != null ? c.MailingAddress.getCity() : '') + ' '
+                            + (c.MailingAddress.getPostalCode() != null ? c.MailingAddress.getPostalCode() : '') + ', ' 
+                            + (c.MailingAddress.getState() != null ? c.MailingAddress.getState() : '') + ' ' 
+                            + (c.MailingAddress.getStateCode() != null ? c.MailingAddress.getStateCode() : '') + ', '
+                            + (c.MailingAddress.getCountry() != null ? c.MailingAddress.getCountry() : '') + '. ';
         } else {
             t.Description = 'The mailing address is unknown. ';
         }
