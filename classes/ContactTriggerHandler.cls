@@ -44,7 +44,7 @@ public with sharing class ContactTriggerHandler {
             for (Contact con : accountToContactsMap.get(acc.Id)) {
                 Integer contactAge = Date.today().year() - con.Birthdate.year();
                 if (contactAge < legalAge) {
-                    con.addError('All contact persons should be of legal age.');
+                    con.addError(Label.LegalAgeErrorLabel);
                 }
             }
         }
